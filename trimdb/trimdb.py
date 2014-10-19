@@ -6,7 +6,10 @@ def printf(*args):
 
 from quassel import *
 
-def trim_quassel_db(uri, pruneInfoMessages=True, pruneOrphanSenders=True):
+from sqlalchemy import or_
+def trim_quassel_db(uri, pruneInfoMessages=True, pruneOrphanSenders=True, olderThanTimestamp=None):
+    # olderThanTimestamp: DateTime
+    
     session = quassel_session(uri)
 
     ###############################
@@ -20,20 +23,25 @@ def trim_quassel_db(uri, pruneInfoMessages=True, pruneOrphanSenders=True):
         printf('----')
 
         query = session.query(Message)
-        from sqlalchemy import or_
-        query = query.filter(or_(\
-            Message.type == MessageType.Notice, \
-            Message.type == MessageType.Nick, \
-            Message.type == MessageType.Mode, \
-            Message.type == MessageType.Join, \
-            Message.type == MessageType.Part, \
-            Message.type == MessageType.Quit, \
-            Message.type == MessageType.Server, \
-            Message.type == MessageType.Info, \
-            Message.type == MessageType.Error, \
-            Message.type == MessageType.NetsplitJoin, \
-            Message.type == MessageType.NetsplitQuit \
-        ))
+        criterion = [
+            or_(\
+                Message.type == MessageType.Notice, \
+                Message.type == MessageType.Nick, \
+                Message.type == MessageType.Mode, \
+                Message.type == MessageType.Join, \
+                Message.type == MessageType.Part, \
+                Message.type == MessageType.Quit, \
+                Message.type == MessageType.Server, \
+                Message.type == MessageType.Info, \
+                Message.type == MessageType.Error, \
+                Message.type == MessageType.NetsplitJoin, \
+                Message.type == MessageType.NetsplitQuit \
+            )
+        ]
+        if olderThanTimestamp is not None:
+            criterion.append(Message.time <= olderThanTimestamp)
+
+        query = query.filter(*criterion)
         count = query.count()
         printf('Found:', count)
         deleted = query.delete()
@@ -67,8 +75,14 @@ if __name__ == '__main__':
     import argparse
 
     parser = argparse.ArgumentParser(description='Prune Quassel\'s Database')
+    
+    # Arguments
     parser.add_argument('uri',
                        help='The URI to Quassel\' DB.')
+    # parser.add_argument('-t', '--olderThanTimestamp',
+    #                    help='Delete things at older than the given unix epoch timestamp.')
+    # parser.add_argument('-d', '--daysOld', action='store_none', default=7,
+    #                    help='Delete things at least _ days old.')
 
     # Switches
     parser.add_argument('-i', '--pruneInfoMessages', action='store_true', default=False,
